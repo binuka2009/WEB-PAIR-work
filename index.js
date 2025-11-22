@@ -1,36 +1,22 @@
-require("dotenv").config();
+// index.js (වෙනස් කිරීමක් අවශ්‍ය නොවේ)
 const express = require('express');
-const bodyParser = require("body-parser");
-const fs = require("fs");
-const __path = process.cwd();
-const PORT = process.env.PORT || 8000;
-
-// --- Create .env if missing (empty values)
-if (!fs.existsSync("./.env")) {
-    fs.writeFileSync("./.env",
-`MEGA_EMAIL=
-MEGA_PASSWORD=
-OWNER_NUMBER=
-SESSION_ID=
-`);
-    console.log("⚠️ .env missing → Created new one.");
-    console.log("➡️ Please fill MEGA_EMAIL, MEGA_PASSWORD, OWNER_NUMBER and run again.");
-    process.exit();
-}
-
 const app = express();
-const pairRouter = require('./pair');
-app.use('/code', pairRouter);
+require('events').EventEmitter.defaultMaxListeners = 500; // මෙය ඉහළටම ගෙනාවා
+__path = process.cwd()
+const bodyParser = require("body-parser");
+const PORT = process.env.PORT || 8000;
+let code = require('./pair');
 
-app.get('/', async (req, res) => {
-    res.sendFile(__path + '/pair.html');
-});
+app.use('/code', code);
+
+app.use('/',async (req, res, next) => {
+res.sendFile(__path + '/pair.html')
+})
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
 app.listen(PORT, () => {
-    console.log(`⏩ Server running at http://localhost:${PORT}`);
-});
+    console.log(`⏩ Server running on http://localhost:` + PORT)
+})
 
-module.exports = app;
+module.exports = app
