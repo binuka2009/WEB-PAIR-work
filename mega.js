@@ -1,40 +1,24 @@
-require("dotenv").config();
-const mega = require("megajs");
+const mega = require('megajs');
 
-const auth = {
-    email: process.env.MEGA_EMAIL,
-    password: process.env.MEGA_PASSWORD,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'
-};
-
-const upload = (data, name) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const storage = new mega.Storage(auth, () => {
-                const up = storage.upload({
-                    name: name,
-                    allowUploadBuffering: true
-                });
-
-                data.pipe(up);
-
-                up.on('complete', (file) => {
-                    file.link((err, url) => {
-                        if (err) return reject(err);
-                        storage.close();
-                        resolve(url);
-                    });
-                });
-            });
-
-            storage.on("error", (err) => {
-                reject(err);
-            });
-
-        } catch (err) {
-            reject(err);
-        }
+async function uploadToMega(filePath) {
+    const storage = new mega.Storage({
+        email: process.env.MEGA_EMAIL,
+        password: process.env.MEGA_PASSWORD,
     });
-};
 
-module.exports = { upload };
+    return new Promise((resolve, reject) => {
+        storage.on('ready', () => {
+            const file = storage.upload({ name: filePath.split('/').pop() }, filePath);
+
+            file.on('complete', () => {
+                resolve(file.link());
+            });
+
+            file.on('error', reject);
+        });
+
+        storage.on('error', reject);
+    });
+}
+
+module.exports = { uploadToMega };
