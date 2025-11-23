@@ -100,15 +100,7 @@ router.get('/', async (req, res) => {
                         console.error("❌ MEGA upload or Message send failed:", e);
                         // ඔබට මෙහිදි 'pm2 restart' එකක් අවශ්‍ය නම් තබා ගන්න.
                         // exec('pm2 restart danuwa'); 
-                    } finally {
-                        // Temp files සහ session එක delete කර process එක නවතයි
-                        await delay(100);
-                        await removeFile(auth_path); 
-                        DanuwaPairWeb.end(); // Connection එක වසා දමයි
-                        console.log("Session files removed and process finished.");
-                        process.exit(0);
-                    }
-
+                    } 
                 } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
                     // 401 (Logged Out) නොවන error එකකදී නැවත සම්බන්ධ වීමට උත්සාහ කරයි
                     await delay(10000);
