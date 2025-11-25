@@ -1,4 +1,3 @@
-// pair.js
 const express = require('express');
 const fs = require('fs');
 const { exec } = require("child_process");
@@ -12,23 +11,34 @@ const {
     Browsers,
     jidNormalizedUser
 } = require("@whiskeysockets/baileys");
+const { upload } = require('./mega');
 
-// MEGA හෝ OWNER_NUMBER අවශ්‍ය නොවේ.
+// Replit Secret වෙතින් OWNER_NUMBER එක ලබා ගනියි.
+// මෙය අනිවාර්යයෙන්ම Replit Secrets වල තිබිය යුතුයි.
+const OWNER_NUMBER = process.env.OWNER_NUMBER || '';
+
+// OWNER_NUMBER එක ජාත්‍යන්තර ආකෘතියේ JID බවට පත් කරයි (උදා: 9477xxxxxxx@s.whatsapp.net)
+const ownerJid = OWNER_NUMBER ? jidNormalizedUser(OWNER_NUMBER + '@s.whatsapp.net') : null;
 
 function removeFile(FilePath) {
     if (!fs.existsSync(FilePath)) return false;
     fs.rmSync(FilePath, { recursive: true, force: true });
 }
 
-router.get('/', async (req, res) => {
-    let num = req.query.number; // Webview එකේ ඇතුළත් කරන දුරකථන අංකය
-    
-    // num එක ජාත්‍යන්තර ආකෘතියේ JID බවට පත් කරයි
-    const pairJid = num ? jidNormalizedUser(num.replace(/[^0-9]/g, '') + '@s.whatsapp.net') : null;
-
-    if (!pairJid) {
-        return res.status(400).send({ error: "Invalid number provided." });
+// ෂෝන් කෙරූ කේතයේ තිබූ randomMegaId function එක මෙහිදී නැවතත් භාවිතා කරයි
+function randomMegaId(length = 6, numberLength = 4) {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
     }
+    const number = Math.floor(Math.random() * Math.pow(10, numberLength));
+    return `${result}${number}`;
+}
+
+
+router.get('/', async (req, res) => {
+    let num = req.query.number; 
 
     async function DanuwaPair() {
         const auth_path = './session/';
@@ -47,9 +57,9 @@ router.get('/', async (req, res) => {
 
             if (!DanuwaPairWeb.authState.creds.registered) {
                 await delay(1500);
-                
-                // Pair Code එක ඉල්ලීම
-                const code = await DanuwaPairWeb.requestPairingCode(num.replace(/[^0-9]/g, ''));
+                num = num.replace(/[^0-9]/g, '');
+
+                const code = await DanuwaPairWeb.requestPairingCode(num);
 
                 if (!res.headersSent) {
                     await res.send({ code });
@@ -62,31 +72,33 @@ router.get('/', async (req, res) => {
                 const { connection, lastDisconnect } = s;
 
                 if (connection === "open") {
-                    console.log("✅ Device Successfully Paired! Encoding Base64 Session..."); 
+                    console.log("✅ Device Successfully Paired! Starting MEGA Upload...");
                     try {
                         await delay(5000); // Wait for credentials to save fully
-                        
-                        // 1. creds.json file එකේ content එක කියවීම
-                        const credsJson = fs.readFileSync(auth_path + 'creds.json'); 
-                        
-                        // 2. එම content එක Base64 String එකක් බවට පත් කිරීම (දිගු Session String එක)
-                        const finalBase64String = Buffer.from(credsJson).toString('base64');
-                        
-                        console.log(`✅ Session ID generated and Encoded. Sending to Pairing Number: ${num}`);
 
-                        // Session ID එක Pair Code එක දුන් අංකයටම යැවීම
-                        await DanuwaPairWeb.sendMessage(pairJid, {
-                            text: `⭐ Session ID එක සාර්ථකව Generate විය. *මෙය ඔබගේ Deploy Bot එකේ SESSION_ID ලෙස යොදන්න.*:\n\n*Zanta-MD Base64 Session id👇*\n\n${finalBase64String}` 
-                        });
-                        console.log(`✅ Confirmation message sent to Pairing Number: ${num}`);
-                        
-                        // වැඩ අවසන් වූ පසු Bot එක Close කර Session Files ඉවත් කරයි
-                        await delay(5000);
-                        await DanuwaPairWeb.end('Session sent successfully');
-                        removeFile(auth_path); 
+                        // Session ගොනුව MEGA වෙත යැවීම
+                        const fileName = `${randomMegaId()}.json`;
+                        const mega_url = await upload(fs.createReadStream(auth_path + 'creds.json'), fileName);
+
+                        const string_session = mega_url.replace('https://mega.nz/file/', '');
+                        const sid = string_session;
+
+                        console.log(`✅ Session ID generated and uploaded to MEGA: ${sid}`);
+
+                        // Session ID එක OWNER_NUMBER එකට යැවීම
+                        if (ownerJid) {
+                            await DanuwaPairWeb.sendMessage(ownerJid, {
+                                text: `⭐ Session ID එක සාර්ථකව Generate වී MEGA වෙත Upload විය. String Session එක:\n\n*Zanta-MD Session id👇*\n\n_${sid}_\n\nMEGA Link: ${mega_url}`
+                            });
+                            console.log(`✅ Confirmation message sent to Owner Number: ${OWNER_NUMBER}`);
+                        } else {
+                            console.log("⚠️ OWNER_NUMBER configured නැති නිසා Session ID එක WhatsApp හරහා යැවිය නොහැක. Console එකෙන් ලබා ගන්න.");
+                        }
 
                     } catch (e) {
-                        console.error(`❌ Base64 Encoding or Message send failed to ${num}:`, e);
+                        console.error("❌ MEGA upload or Message send failed:", e);
+                        // ඔබට මෙහිදි 'pm2 restart' එකක් අවශ්‍ය නම් තබා ගන්න.
+                        // exec('pm2 restart danuwa'); 
                     } 
                 } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
                     // 401 (Logged Out) නොවන error එකකදී නැවත සම්බන්ධ වීමට උත්සාහ කරයි
@@ -100,6 +112,7 @@ router.get('/', async (req, res) => {
             });
         } catch (err) {
             console.error("❌ Pairing process failed:", err.message);
+            // exec('pm2 restart danuwa-md'); // අවශ්‍ය නම් pm2 restart
             await removeFile('./session');
             if (!res.headersSent) {
                 await res.send({ code: "Service Unavailable" });
@@ -111,6 +124,8 @@ router.get('/', async (req, res) => {
 
 process.on('uncaughtException', function (err) {
     console.log('Caught exception: ' + err);
+    // exec('pm2 restart danuwa'); // අවශ්‍ය නම් pm2 restart
 });
+
 
 module.exports = router;
